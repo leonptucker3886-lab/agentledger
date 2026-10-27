@@ -1,0 +1,59 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentLedger v0.1 (beta)</title><meta name="robots" content="noindex">
+<style>
+body{font-family:system-ui,sans-serif;margin:0;background:#FAFAF9;color:#18181B}
+header{background:#18181B;color:#fff;padding:14px 20px}header small{color:#f5c542}
+.beta{background:#f5c542;text-align:center;padding:6px;font-size:14px}
+nav{display:flex;gap:6px;padding:10px 20px;flex-wrap:wrap}nav button{padding:8px 14px;border:1px solid #DEDDD8;background:#fff;border-radius:6px;cursor:pointer}
+nav button.on{background:#2A78D6;color:#fff}
+main{padding:0 20px 40px;max-width:1000px}section{display:none}section.on{display:block}
+.card{background:#fff;border:1px solid #DEDDD8;border-radius:8px;padding:12px;margin:8px 0}
+input,select,textarea{padding:7px;border:1px solid #ccc;border-radius:5px;margin:3px 0;font:inherit}
+textarea{width:100%;min-height:60px}.act{background:#2A78D6;color:#fff;border:0;padding:7px 12px;border-radius:5px;cursor:pointer}
+.ok{background:#008300}.no{background:#b42318}.tag{font-size:12px;padding:2px 7px;border-radius:9px;background:#eee}
+.pending{background:#fff3c4}.approved{background:#d6f5d6}.denied{background:#fbd5d1}
+table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px solid #DEDDD8;padding:6px;text-align:left}
+</style></head><body>
+<header><b>AgentLedger</b> <small>v0.1</small> shared memory, audit trail and approvals for AI agent teams</header>
+<div class="beta">Beta rough draft. Data is saved in this browser. Use Export to back it up.</div>
+<nav><button data-t="dash" class="on">Dashboard</button><button data-t="agents">Agents</button><button data-t="memory">Memory</button><button data-t="approvals">Approvals</button><button data-t="audit">Audit trail</button><button data-t="data">Export / Import</button></nav>
+<main>
+<section id="dash" class="on"><h2>Dashboard</h2><div id="stats"></div><h3>Latest activity</h3><div id="recent"></div></section>
+<section id="agents"><h2>Agents</h2><div class="card"><input id="aName" placeholder="Agent name"> <input id="aRank" placeholder="Rank / role"> <button class="act" onclick="addAgent()">Add agent</button></div><div id="agentList"></div></section>
+<section id="memory"><h2>Shared memory</h2><div class="card"><select id="mAgent"></select> <input id="mTitle" placeholder="Title"> <input id="mTags" placeholder="tags, comma separated"><textarea id="mBody" placeholder="What should the team remember?"></textarea><button class="act" onclick="addMem()">Save memory</button></div><input id="mSearch" placeholder="Search memory..." oninput="render()" style="width:100%"><div id="memList"></div></section>
+<section id="approvals"><h2>Approval queue</h2><div class="card"><select id="pAgent"></select> <input id="pAction" placeholder="Action requested" style="width:60%"><textarea id="pWhy" placeholder="Why / details"></textarea><button class="act" onclick="addReq()">Request approval</button></div><select id="pFilter" onchange="render()"><option value="">All</option><option>pending</option><option>approved</option><option>denied</option></select><div id="reqList"></div></section>
+<section id="audit"><h2>Audit trail</h2><p>Every change is logged automatically and can't be edited.</p><input id="aSearch" placeholder="Filter..." oninput="render()" style="width:100%"><table><thead><tr><th>Time (UTC)</th><th>Who</th><th>Event</th></tr></thead><tbody id="auditList"></tbody></table><button class="act" onclick="csv()">Download audit CSV</button></section>
+<section id="data"><h2>Export / Import</h2><button class="act" onclick="exp()">Export ledger (JSON)</button><p>Import a ledger file:</p><input type="file" id="imp" accept=".json" onchange="impF(event)"><p><button class="act no" onclick="resetL()">Reset ledger</button></p></section>
+</main>
+<script>
+const K='agentledger.v1';let D;const $=i=>document.getElementById(i);
+function load(){D=JSON.parse(localStorage.getItem(K)||'null')||{agents:[{id:1,name:'Leon Tucker',rank:'Commander'},{id:2,name:'COMMAND GENERAL Paperwork',rank:'General'}],mem:[],req:[],audit:[],seq:3};render()}
+function save(){localStorage.setItem(K,JSON.stringify(D));render()}
+function now(){return new Date().toISOString().replace('T',' ').slice(0,19)}
+function log(who,ev){D.audit.unshift({t:now(),who,ev});save()}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function an(id){const a=D.agents.find(x=>x.id==id);return a?a.name:'Unknown'}
+function v(i){return $(i).value.trim()}function clr(...a){a.forEach(i=>$(i).value='')}
+function addAgent(){const n=v('aName');if(!n)return alert('Name required');D.agents.push({id:D.seq++,name:n,rank:v('aRank')});clr('aName','aRank');log('System','Agent added: '+n)}
+function delAgent(id){const n=an(id);D.agents=D.agents.filter(a=>a.id!=id);log('System','Agent removed: '+n)}
+function addMem(){const t=v('mTitle'),b=v('mBody');if(!t||!b)return alert('Title and text required');const a=v('mAgent');D.mem.unshift({id:D.seq++,a,t,b,tags:v('mTags').split(',').map(s=>s.trim()).filter(Boolean),at:now()});clr('mTitle','mBody','mTags');log(an(a),'Memory saved: '+t)}
+function delMem(id){const m=D.mem.find(x=>x.id==id);D.mem=D.mem.filter(x=>x.id!=id);log('System','Memory deleted: '+m.t)}
+function addReq(){const ac=v('pAction');if(!ac)return alert('Action required');const a=v('pAgent');D.req.unshift({id:D.seq++,a,ac,why:v('pWhy'),st:'pending',at:now()});clr('pAction','pWhy');log(an(a),'Approval requested: '+ac)}
+function decide(id,st){const r=D.req.find(x=>x.id==id);const who=prompt('Your name (decider):','Leon Tucker');if(!who)return;const note=prompt('Note (optional):','')||'';Object.assign(r,{st,by:who,note,dec:now()});log(who,(st=='approved'?'Approved':'Denied')+': '+r.ac+(note?' ('+note+')':''))}
+function render(){if(!D)return;const o=D.agents.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('');
+['mAgent','pAgent'].forEach(i=>{const c=$(i).value;$(i).innerHTML=o;if(c)$(i).value=c});
+const p=D.req.filter(r=>r.st=='pending').length;
+$('stats').innerHTML=`<div class="card">Agents: <b>${D.agents.length}</b> | Memories: <b>${D.mem.length}</b> | Pending approvals: <b>${p}</b> | Audit events: <b>${D.audit.length}</b></div>`;
+$('recent').innerHTML=D.audit.slice(0,8).map(e=>`<div class="card">${e.t} <b>${esc(e.who)}</b>: ${esc(e.ev)}</div>`).join('')||'<p>No activity yet.</p>';
+$('agentList').innerHTML=D.agents.map(a=>`<div class="card"><b>${esc(a.name)}</b> <span class="tag">${esc(a.rank)}</span> <button onclick="delAgent(${a.id})">Remove</button></div>`).join('');
+const q=$('mSearch').value.toLowerCase();$('memList').innerHTML=D.mem.filter(m=>(m.t+m.b+m.tags.join(' ')).toLowerCase().includes(q)).map(m=>`<div class="card"><b>${esc(m.t)}</b> <small>by ${esc(an(m.a))}, ${m.at}</small> ${m.tags.map(t=>`<span class="tag">${esc(t)}</span>`).join(' ')}<p>${esc(m.b)}</p><button onclick="delMem(${m.id})">Delete</button></div>`).join('')||'<p>No memories.</p>';
+const f=$('pFilter').value;$('reqList').innerHTML=D.req.filter(r=>!f||r.st==f).map(r=>`<div class="card ${r.st}"><b>${esc(r.ac)}</b> <span class="tag">${r.st}</span><br><small>Requested by ${esc(an(r.a))}, ${r.at}</small><p>${esc(r.why)}</p>${r.st=='pending'?`<button class="act ok" onclick="decide(${r.id},'approved')">Approve</button> <button class="act no" onclick="decide(${r.id},'denied')">Deny</button>`:`<small>${r.st} by ${esc(r.by)} at ${r.dec}${r.note?': '+esc(r.note):''}</small>`}</div>`).join('')||'<p>No requests.</p>';
+const s=$('aSearch').value.toLowerCase();$('auditList').innerHTML=D.audit.filter(e=>(e.who+e.ev).toLowerCase().includes(s)).map(e=>`<tr><td>${e.t}</td><td>${esc(e.who)}</td><td>${esc(e.ev)}</td></tr>`).join('')}
+function dl(n,t,ty){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:ty}));a.download=n;a.click()}
+function exp(){dl('agentledger-'+now().slice(0,10)+'.json',JSON.stringify(D,null,2),'application/json');log('System','Ledger exported')}
+function csv(){dl('agentledger-audit.csv','time,who,event\n'+D.audit.map(e=>[e.t,e.who,e.ev].map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(',')).join('\n'),'text/csv')}
+function impF(ev){const r=new FileReader();r.onload=()=>{try{const x=JSON.parse(r.result);if(!x.agents||!x.audit)throw 0;D=x;log('System','Ledger imported')}catch(e){alert('Not a valid AgentLedger file')}};r.readAsText(ev.target.files[0])}
+function resetL(){if(confirm('Erase all data?')){localStorage.removeItem(K);load();log('System','Ledger reset')}}
+document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{document.querySelectorAll('nav button,section').forEach(x=>x.classList.remove('on'));b.classList.add('on');$(b.dataset.t).classList.add('on')});
+load();
+</script></body></html>
