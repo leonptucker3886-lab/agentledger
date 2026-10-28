@@ -24,3 +24,14 @@
 
 ## Known limits / next
 - Data still lives in one browser. Phase 2: Supabase backend so all agents share one live ledger, with the hash chain stored server-side.
+
+
+## 2026-10-28 — Point 1 closed: browser hand test (live site)
+Clicked through https://agentledger-tan.vercel.app in a real browser.
+- Page loads as "AgentLedger v0.2 (beta)".
+- All tabs work: Dashboard, Agents, Memory, Approvals, Audit trail, Export / Import.
+- Added a sample agent, saved a sample memory, created a sample approval request: all succeeded.
+- Audit chain verification: "Chain intact (3 sealed entries)".
+- Audit CSV and ledger JSON export respond with no errors.
+- Reset Ledger shows a confirmation dialog (dismissed, no data lost).
+- No broken links, no visible console/resource errors, no UI glitches found.
