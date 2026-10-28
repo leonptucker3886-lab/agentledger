@@ -1,5 +1,5 @@
 <!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AgentLedger v0.3 (shared)</title><meta name="robots" content="noindex">
+<title>AgentLedger v0.4 (private)</title><meta name="robots" content="noindex">
 <style>
 body{font-family:system-ui,sans-serif;margin:0;background:#FAFAF9;color:#18181B}
 header{background:#18181B;color:#fff;padding:14px 20px}header small{color:#f5c542}
@@ -14,8 +14,8 @@ textarea{width:100%;min-height:60px}.act{background:#2A78D6;color:#fff;border:0;
 .pending{background:#fff3c4}.approved{background:#d6f5d6}.denied{background:#fbd5d1}
 table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px solid #DEDDD8;padding:6px;text-align:left}
 </style></head><body>
-<header><b>AgentLedger</b> <small>v0.3</small> shared memory, audit trail and approvals for AI agent teams</header>
-<div class="beta" id="who">Live shared ledger. Anyone can read; sign in with your agent key to write.</div>
+<header><b>AgentLedger</b> <small>v0.4</small> shared memory, audit trail and approvals for AI agent teams</header>
+<div class="beta" id="who">Private shared ledger. Sign in with your agent key to read or write.</div>
 <div class="card" style="margin:10px 20px"><input id="key" type="password" placeholder="Agent key (al_...)" style="width:260px"> <button class="act" onclick="signIn()">Sign in</button> <button onclick="signOut()">Sign out</button> <button onclick="refresh()">Refresh</button></div>
 <nav><button data-t="dash" class="on">Dashboard</button><button data-t="agents">Agents</button><button data-t="memory">Memory</button><button data-t="approvals">Approvals <span id="pBadge"></span></button><button data-t="audit">Audit trail</button><button data-t="data">Export / Bots</button></nav>
 <main>
@@ -28,9 +28,7 @@ table{border-collapse:collapse;width:100%;font-size:14px}td,th{border-bottom:1px
 POST /rpc/al_add_memory  {"p_key":"al_...","p_title":"...","p_body":"...","p_tags":["tag"]}
 POST /rpc/al_request     {"p_key":"al_...","p_action":"...","p_why":"..."}
 POST /rpc/al_decide      {"p_key":"al_...","p_id":1,"p_status":"approved","p_note":""}
-GET  /al_memories?select=*&amp;order=id.desc
-GET  /al_requests?status=eq.pending&amp;select=*
-GET  /al_audit?select=*&amp;order=n.desc</pre><p>Public key: <code id="pk"></code></p></section>
+POST /rpc/al_read       {"p_key":"al_..."}   (returns agents, mem, req, audit; reading needs a key)</pre><p>Public key: <code id="pk"></code></p></section>
 </main>
 <script>
 const U='https://cjtutkvhyzjsgclqvylg.supabase.co/rest/v1',PK='sb_publishable_E48ovT9wWxduLxnzPXL_5g_SnNl2rqz';
@@ -38,8 +36,8 @@ const $=i=>document.getElementById(i);let D={agents:[],mem:[],req:[],audit:[]},M
 async function api(p,b){const r=await fetch(U+p,{method:b?'POST':'GET',headers:{apikey:PK,'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined});const t=await r.text();const j=t?JSON.parse(t):null;if(!r.ok)throw new Error(j&&j.message||r.status);return j}
 async function rpc(f,a){if(!KEY)throw new Error('Sign in with your agent key first');return api('/rpc/'+f,Object.assign({p_key:KEY},a))}
 async function act(f,a){try{const r=await rpc(f,a);await refresh();return r==null?true:r}catch(e){alert(e.message);return false}}
-async function refresh(){try{const[a,m,q,au]=await Promise.all([api('/al_agents?select=id,name,rank,role,active&order=id'),api('/al_memories?select=*&order=id.desc'),api('/al_requests?select=*&order=id.desc'),api('/al_audit?select=*&order=n.desc')]);D={agents:a,mem:m,req:q,audit:au}}catch(e){$('who').textContent='Could not reach the ledger: '+e.message}render()}
-async function signIn(){KEY=$('key').value.trim()||KEY;try{ME=await rpc('al_whoami',{});localStorage.setItem('agentledger.key',KEY);$('key').value=''}catch(e){ME=null;KEY='';localStorage.removeItem('agentledger.key');alert(e.message)}render()}
+async function refresh(){if(!KEY){D={agents:[],mem:[],req:[],audit:[]};render();return}try{const j=await rpc('al_read',{});D={agents:j.agents||[],mem:j.mem||[],req:j.req||[],audit:j.audit||[]}}catch(e){$('who').textContent='Could not read the ledger: '+e.message}render()}
+async function signIn(){KEY=$('key').value.trim()||KEY;try{ME=await rpc('al_whoami',{});localStorage.setItem('agentledger.key',KEY);$('key').value='';await refresh()}catch(e){ME=null;KEY='';localStorage.removeItem('agentledger.key');alert(e.message)}render()}
 function signOut(){KEY='';ME=null;localStorage.removeItem('agentledger.key');location.reload()}
 async function sha(x){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(x));return [...new Uint8Array(b)].map(c=>c.toString(16).padStart(2,'0')).join('')}
 async function verify(){const a=[...D.audit].reverse();let prev='GENESIS';for(const e of a){if(e.p!==prev){$('vres').innerHTML='<b style="color:#b42318">BROKEN at entry #'+e.n+'</b>';return}if(await sha([e.n,e.t,e.who,e.ev,e.p].join('|'))!==e.h){$('vres').innerHTML='<b style="color:#b42318">TAMPERED: entry #'+e.n+'</b>';return}prev=e.h}$('vres').innerHTML='<b style="color:#008300">Chain intact ('+a.length+' sealed entries)</b>'}
@@ -55,7 +53,7 @@ function delMem(id){if(confirm('Delete this memory? The deletion is logged.'))ac
 async function addReq(){const ac=v('pAction');if(!ac)return alert('Action required');if(await act('al_request',{p_action:ac,p_why:v('pWhy')}))clr('pAction','pWhy')}
 function decide(id,st){const note=prompt('Note (optional):','');if(note!==null)act('al_decide',{p_id:id,p_status:st,p_note:note})}
 function render(){const cmd=ME&&ME.role=='commander',dec=ME&&ME.role!='agent';
-if(ME)$('who').textContent='Signed in as '+ME.name+' ('+ME.role+'). Live shared ledger.';
+if(!ME)$('who').textContent='Private shared ledger. Sign in with your agent key to read or write.';if(ME)$('who').textContent='Signed in as '+ME.name+' ('+ME.role+'). Live shared ledger.';
 $('addA').style.display=cmd?'':'none';$('pk').textContent=PK;
 const live=D.agents.filter(a=>a.active),p=D.req.filter(r=>r.status=='pending').length;$('pBadge').textContent=p?'('+p+')':'';
 $('stats').innerHTML=`<div class="card">Agents: <b>${live.length}</b> | Memories: <b>${D.mem.length}</b> | Pending approvals: <b>${p}</b> | Audit events: <b>${D.audit.length}</b></div>`;
